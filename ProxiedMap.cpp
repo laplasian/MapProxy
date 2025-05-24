@@ -3,38 +3,58 @@
 #include <stdexcept>
 
 
-int ProxiedMap::read(const std::string &key) {
-    const std::pair < Auditor::AccessType, int > info = auditor_.read(key);
-    if (info.first == Auditor::AccessType::Owner)
-    {
-        return info.second;
-    }
-    if (info.first==Auditor::Prohibited)
+int ProxiedMap::read(const std::string &key) const {
+    const Auditor::AccessType info = auditor_.check(key);
+    if (info==Auditor::Prohibited)
     {
         throw std::runtime_error("Prohibited");
     }
-    const auto item = data_.find(key);
-    if (item == data_.end())
+    if (info == Auditor::AccessType::Owner)
     {
-        throw std::runtime_error("No such key");
+        try {
+            const Spoofer& spoofer = dynamic_cast<const Spoofer&>(auditor_);
+            if (spoofer.spoofed.find(key) != spoofer.spoofed.end()) return spoofer.spoofed.at(key);
+        } catch (const std::bad_cast&) {
+            throw std::runtime_error("Auditor return Owner flag, but he isn`t Spoofer");
+        }
     }
-    return item->second;
+    return data_.at(key);
 }
 
 void ProxiedMap::edit(const std::string &key, int data) {
-    std::pair < Auditor::AccessType, int > info = auditor_.read(key);
-    if (info.first == Auditor::AccessType::Owner)
+    const Auditor::AccessType info = auditor_.check(key);
+    if (info==Auditor::Prohibited)
     {
-        info.second = data;
-        return;
-    }
-    if (info.first==Auditor::Prohibited || info.first==Auditor::Readonly) {
         throw std::runtime_error("Prohibited");
     }
-    auto item = data_.find(key);
-    if (item == data_.end())
+    if (info == Auditor::AccessType::Owner | Auditor::AccessType::Write)
     {
-        throw std::runtime_error("No such key");
+        try {
+            const auto& spoofer = dynamic_cast<const Spoofer&>(auditor_);
+            auto it = spoofer.spoofed.find(key);
+            if (it != spoofer.spoofed.end()) {
+                it->second = data;
+            };
+        } catch (const std::bad_cast&) {
+            throw std::runtime_error("Auditor return Owner flag, but he isn`t Spoofer");
+        }
     }
-    item->second = data;
+    auto it = data_.find(key);
+    if (it != data_.end()) {
+        data_[key] = data;
+    };
+}
+
+void ProxiedMap::add(const std::string &key, int data) {
+    const Auditor::AccessType info = auditor_.check(key);
+    if (info==Auditor::Prohibited)
+    {
+        throw std::runtime_error("Prohibited");
+    }
+    if (info == Auditor::AccessType::Owner) {
+
+    }
+}
+
+void ProxiedMap::remove(const std::string &key) {
 }

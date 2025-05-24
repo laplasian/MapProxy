@@ -10,41 +10,37 @@ public:
     virtual ~Auditor() = default;
 
     enum AccessType {
-        Readonly, ReadWrite, Owner, Prohibited
+        Prohibited = 0, Readonly = 0x1, Write = 0x2, Owner = 0x4, Addable = 0x8, Removable = 0x10,
+        ReadWrite = Readonly | Write,
+        FullAccess = Readonly | Write | Addable | Removable,
+        OwnerReadonly = Readonly | Readonly,
     };
+    [[nodiscard]] virtual AccessType check(const std::string& key) const = 0;
+};
 
-    [[nodiscard]] const virtual std::pair < AccessType, int > read(const std::string& key) const = 0;
+class Spoofer : public Auditor {
+protected:
+    friend class ProxiedMap;
+    mutable std::map<std::string, int> spoofed;
 };
 
 class FullAccess final : public Auditor {
 public:
     FullAccess() = default;
-    [[nodiscard]] const std::pair < AccessType, int > read(const std::string& key) const override {return access_;};
-private:
-    static constexpr std::pair < AccessType, int > access_ {ReadWrite, 0};
+    [[nodiscard]] AccessType check(const std::string& key) const override {return AccessType::FullAccess;};
 };
 
 class Reader final : public Auditor {
 public:
-    [[nodiscard]] const std::pair < AccessType, int > read(const std::string& key) const override {return access_;};
-private:
-    static constexpr std::pair < AccessType, int > access_ {Readonly, 0};
+    [[nodiscard]] AccessType check(const std::string& key) const override {return AccessType::Readonly;};
 };
 
-class OwnMap final : public Auditor {
+class OwnMap final : public Spoofer {
 public:
-    explicit OwnMap(const std::map<std::string, int> & spoofed = {}): spoofed(spoofed) {};
-    [[nodiscard]] const std::pair < AccessType, int > read(const std::string& key) const override {
-        const auto item = spoofed.find(key);
-        if (item == spoofed.end())
-        {
-            return access_;
-        }
-        return  {Owner, item->second};
+    explicit OwnMap(const std::map<std::string, int> & spoofed_ = {}) { spoofed = spoofed_ ;};
+    [[nodiscard]] AccessType check(const std::string& key) const override {
+        return AccessType::OwnerReadonly;
     };
-private:
-    std::map<std::string, int> spoofed;
-    static constexpr std::pair < AccessType, int > access_ {Readonly, 0};
 };
 
 
@@ -52,36 +48,31 @@ class Proxy final : public Auditor {
 public:
     Proxy(const std::vector<std::string>& write_map, const std::vector<std::string>& prohibited_map ):
         write_map_(write_map), prohibited_map_(prohibited_map) {};
-    [[nodiscard]] const std::pair < AccessType, int > read(const std::string& key) const override {
+    [[nodiscard]] AccessType check(const std::string& key) const override {
         for (auto &key_: prohibited_map_) {
-            if (key == key_) return access_prohibited;
+            if (key == key_) return Prohibited;
         }
         for (auto &key_: write_map_) {
-            if (key == key_) return access_readwrite;
+            if (key == key_) return ReadWrite;
         }
-        return access_readonly;
+        return Readonly;
     }
 private:
     std::vector<std::string> write_map_;
     std::vector<std::string> prohibited_map_;
-    static constexpr std::pair < AccessType, int > access_readonly {Readonly, 0};
-    static constexpr std::pair < AccessType, int > access_readwrite {ReadWrite, 0};
-    static constexpr std::pair < AccessType, int > access_prohibited {Prohibited, 0};
 };
 
 class Slave final : public Auditor {
 public:
     explicit Slave(const std::vector<std::string>& read_access_map): access_map_(read_access_map){};
-    [[nodiscard]] const std::pair < AccessType, int > read(const std::string& key) const override {
+    [[nodiscard]] AccessType check(const std::string& key) const override {
         for (auto &key_: access_map_) {
-            if (key == key_) return access_readonly;
+            if (key == key_) return Readonly;
         }
-        return access_prohibited;
+        return Prohibited;
     }
 private:
     std::vector<std::string> access_map_;
-    static constexpr std::pair < AccessType, int > access_readonly {Readonly, 0};
-    static constexpr std::pair < AccessType, int > access_prohibited {Prohibited, 0};
 };
 
 #endif //AUDITOR_H

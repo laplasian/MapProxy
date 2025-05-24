@@ -10,19 +10,19 @@ TEST(AuditorTest, BasicTest) {
     Slave g4({"key"});
     Proxy g5({"write"}, {"prohibited"});
 
-    EXPECT_EQ(g1.read(""), ( std::pair{Auditor::Readonly, 0}) );
-    EXPECT_EQ(g1.read("key"), (std::pair{Auditor::Owner, 1}));
+    EXPECT_EQ(g1.check(""), ( std::pair{Auditor::Readonly, 0}) );
+    EXPECT_EQ(g1.check("key"), (std::pair{Auditor::Owner, 1}));
 
-    EXPECT_EQ(g2.read(""), ( std::pair{Auditor::ReadWrite, 0}) );
+    EXPECT_EQ(g2.check(""), ( std::pair{Auditor::ReadWrite, 0}) );
 
-    EXPECT_EQ(g3.read(""), ( std::pair{Auditor::Readonly, 0}) );
+    EXPECT_EQ(g3.check(""), ( std::pair{Auditor::Readonly, 0}) );
 
-    EXPECT_EQ(g4.read(""), ( std::pair{Auditor::Prohibited, 0}) );
-    EXPECT_EQ(g4.read("key"), ( std::pair{Auditor::Readonly, 0}) );
+    EXPECT_EQ(g4.check(""), ( std::pair{Auditor::Prohibited, 0}) );
+    EXPECT_EQ(g4.check("key"), ( std::pair{Auditor::Readonly, 0}) );
 
-    EXPECT_EQ(g5.read("write"), ( std::pair{Auditor::ReadWrite, 0}) );
-    EXPECT_EQ(g5.read("prohibited"), ( std::pair{Auditor::Prohibited, 0}) );
-    EXPECT_EQ(g5.read(""), ( std::pair{Auditor::Readonly, 0}) );
+    EXPECT_EQ(g5.check("write"), ( std::pair{Auditor::ReadWrite, 0}) );
+    EXPECT_EQ(g5.check("prohibited"), ( std::pair{Auditor::Prohibited, 0}) );
+    EXPECT_EQ(g5.check(""), ( std::pair{Auditor::Readonly, 0}) );
 
 }
 
