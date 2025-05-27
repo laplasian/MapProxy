@@ -3,176 +3,181 @@
 #include "ProxiedMap.h"
 #include <map>
 
-TEST(AuditorTest, BasicTest) {
-    OwnMapAuditor g1({{"key", 1}});
-    FullAccessAuditor g2;
-    ReaderAuditor g3;
-    SlaveAuditor g4({"key"});
-    ProxyAuditor g5({"write"}, {"prohibited"});
+// TEST AUDITORS (ctor, check_read, check_write)
 
-    EXPECT_EQ(g1.check_read(""), ( std::pair{Auditor::Readonly, 0}) );
-    EXPECT_EQ(g1.check_read("key"), (std::pair{Auditor::OwnerReadWrite, 1}));
-
-    EXPECT_EQ(g2.check_read(""), ( std::pair{Auditor::FullAccess, 0}) );
-
-    EXPECT_EQ(g3.check_read(""), ( std::pair{Auditor::Readonly, 0}) );
-
-    EXPECT_EQ(g4.check_read(""), ( std::pair{Auditor::Prohibited, 0}) );
-    EXPECT_EQ(g4.check_read("key"), ( std::pair{Auditor::Readonly, 0}) );
-
-    EXPECT_EQ(g5.check_read("write"), ( std::pair{Auditor::ReadWrite, 0}) );
-    EXPECT_EQ(g5.check_read("prohibited"), ( std::pair{Auditor::Prohibited, 0}) );
-    EXPECT_EQ(g5.check_read(""), ( std::pair{Auditor::Readonly, 0}) );
-
-}
-
-TEST(ProxiedMapTest, BankSystem)
-{
-    std::map<std::string, int> bank_account$;
-    bank_account$.insert({ "Pavel", 1000000 });
-    bank_account$.insert({ "Lev", -100 });
-    bank_account$.insert({ "Artem", 1 });
-
-    OwnMapAuditor OldData({{ "Pavel", 5000 }, { "Lev", 0 }, { "Artem", -10 }});
-    FullAccessAuditor Government;
-    ReaderAuditor TaxInspector;
-
-    SlaveAuditor Pavel({"Pavel"});
-    SlaveAuditor Lev({"Lev"});
-    SlaveAuditor Artem({"Artem"});
-
-    ProxiedMap Map1(bank_account$, Pavel);
-    ProxiedMap Map2(bank_account$, Lev);
-    ProxiedMap Map3(bank_account$, Artem);
-    ProxiedMap Map4(bank_account$, OldData);
-    ProxiedMap Map5(bank_account$, Government);
-    ProxiedMap Map6(bank_account$, TaxInspector);
-
-    EXPECT_EQ(Map1.read("Pavel"), 1000000);
-    EXPECT_EQ(Map2.read("Lev"), -100);
-    EXPECT_EQ(Map3.read("Artem"), 1);
-
-    EXPECT_EQ(Map4.read("Pavel"), 5000);
-    EXPECT_EQ(Map4.read("Lev"), 0);
-    EXPECT_EQ(Map4.read("Artem"), -10);
-
-    EXPECT_EQ(Map5.read("Pavel"), 1000000);
-    EXPECT_EQ(Map5.read("Lev"), -100);
-    EXPECT_EQ(Map5.read("Artem"), 1);
-
-    EXPECT_EQ(Map6.read("Pavel"), 1000000);
-    EXPECT_EQ(Map6.read("Lev"), -100);
-    EXPECT_EQ(Map6.read("Artem"), 1);
-}
-
-TEST(ProxiedMapTest, EditTest)
-{
-    std::map<std::string, int> bank_account$;
-    bank_account$.insert({ "Employee", 10 });
-
-    FullAccessAuditor Boss;
-    ProxiedMap Map(bank_account$, Boss);
-
-    EXPECT_EQ(Map.read("Employee"), 10);
-
-    Map.edit("Employee", Map.read("Employee") + 1000);
-
-    EXPECT_EQ(Map.read("Employee"), 1010);
-
-}
-
-TEST(ProxiedMapAddTest, FullAccessPermitsNewKey) {
-    std::map<std::string, int> data;
+TEST(FullAccessAuditor, BasicTest) {
     FullAccessAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_NO_THROW(m.add("Key1", 42));
-    EXPECT_EQ(m.read("Key1"), 42);
+    EXPECT_EQ(auditor.check_read("any_key"), (std::pair{Auditor::AccessType::FullAccess, 0}) );
+    EXPECT_EQ(auditor.check_write("any_key", 10), Auditor::AccessType::FullAccess);
 }
 
-TEST(ProxiedMapAddTest, FullAccessPermitsOverwrite) {
-    std::map<std::string, int> data;
-    data.insert({"Key1", 7});
-    FullAccessAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_NO_THROW(m.add("Key1", 100));
-    EXPECT_EQ(m.read("Key1"), 100);
-}
-
-TEST(ProxiedMapAddTest, OwnMapThrows) {
-    std::map<std::string, int> data;
-    OwnMapAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
-}
-
-TEST(ProxiedMapAddTest, ReaderThrows) {
-    std::map<std::string, int> data;
+TEST(ReaderAuditor, BasicTest) {
     ReaderAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
+    EXPECT_EQ(auditor.check_read("any_key"), (std::pair{Auditor::AccessType::Readable, 0}));
+    EXPECT_EQ(auditor.check_write("any_key", 10), Auditor::AccessType::Readable);
 }
 
-TEST(ProxiedMapAddTest, SlaveThrows) {
-    std::map<std::string, int> data;
-    SlaveAuditor auditor({"Key1"});
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
+TEST(OwnMapAuditor, BasicTest) {
+    OwnMapAuditor auditor1({{"key1", 10}, {"key2", 20}}, true);
+    OwnMapAuditor auditor2({{"key1", 10}, {"key2", 20}}, false);
+
+    EXPECT_EQ(auditor1.check_read("key1"), (std::pair{Auditor::AccessType::OwnerReadWrite, 10}));
+    EXPECT_EQ(auditor1.check_read("key2"), (std::pair{Auditor::AccessType::OwnerReadWrite, 20}));
+    EXPECT_EQ(auditor1.check_read("key3"), (std::pair{Auditor::AccessType::Readable, 0}));
+    EXPECT_EQ(auditor1.check_write("key1", 0), Auditor::AccessType::OwnerReadWrite);
+    EXPECT_EQ(auditor1.check_write("key3", 0), Auditor::AccessType::Readable);
+
+    EXPECT_EQ(auditor2.check_read("key1"), (std::pair{Auditor::AccessType::OwnerReadonly, 10}));
+    EXPECT_EQ(auditor2.check_read("key2"), (std::pair{Auditor::AccessType::OwnerReadonly, 20}));
+    EXPECT_EQ(auditor2.check_read("key3"), (std::pair{Auditor::AccessType::Readable, 0}));
+    EXPECT_EQ(auditor2.check_write("key1", 0), Auditor::AccessType::OwnerReadonly);
+    EXPECT_EQ(auditor2.check_write("key3", 0), Auditor::AccessType::Readable);
 }
 
-TEST(ProxiedMapAddTest, ProxyThrows) {
-    std::map<std::string, int> data;
-    ProxyAuditor auditor({"Key1"}, {});
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
+TEST(ProxyAuditor, BasicTest) {
+    ProxyAuditor auditor({"key_writable"}, {"key_prohibited"});
+
+    EXPECT_EQ(auditor.check_read("key_writable"), (std::pair{Auditor::AccessType::ReadWrite, 0}));
+    EXPECT_EQ(auditor.check_read("key_prohibited"), (std::pair{Auditor::AccessType::Prohibited, 0}));
+    EXPECT_EQ(auditor.check_read("key_other"), (std::pair{Auditor::AccessType::Readable, 0}));
+
+    EXPECT_EQ(auditor.check_write("key_writable", 10), Auditor::AccessType::ReadWrite);
+    EXPECT_EQ(auditor.check_write("key_prohibited", 10), Auditor::AccessType::Prohibited);
+    EXPECT_EQ(auditor.check_write("key_other", 10), Auditor::AccessType::Readable);
 }
 
-TEST(ProxiedMapRemoveTest, FullAccessPermitsExistingKey) {
-    std::map<std::string, int> data;
-    data.insert({"Key1", 7});
-    FullAccessAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_NO_THROW(m.remove("Key1"));
-    EXPECT_THROW(m.read("Key1"), std::out_of_range);
+TEST(SlaveAuditor, BasicTest) {
+    SlaveAuditor auditor({"key_readable"});
+
+    EXPECT_EQ(auditor.check_read("key_readable"), (std::pair{Auditor::AccessType::Readable, 0}));
+    EXPECT_EQ(auditor.check_read("key_other"), (std::pair{Auditor::AccessType::Prohibited, 0}));
+    EXPECT_EQ(auditor.check_write("any_key", 10), Auditor::AccessType::Prohibited);
 }
 
-TEST(ProxiedMapRemoveTest, FullAccessPermitsNonExistingKey) {
-    std::map<std::string, int> data;
-    FullAccessAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_NO_THROW(m.remove("Key2"));
-    EXPECT_THROW(m.read("Key2"), std::out_of_range);
+// TEST PROXIED MAP (ctor, read, edit, add, remove and throws)
+
+TEST(ProxiedMap, FullAccessAuditor) {
+    std::map<std::string, int> map;
+    map.insert({ "1", 10 });
+    map.insert({ "2", 200 });
+    map.insert({ "3", 3000 });
+
+    FullAccessAuditor god;
+    ProxiedMap proxied_map(map, god);
+
+    EXPECT_EQ(proxied_map.read("1"), 10);
+    EXPECT_EQ(proxied_map.read("2"), 200);
+    EXPECT_EQ(proxied_map.read("3"), 3000);
+
+    proxied_map.edit("1", -10);
+    proxied_map.edit("2", -200);
+    proxied_map.edit("3", -3000);
+
+    EXPECT_EQ(proxied_map.read("1"), -10);
+    EXPECT_EQ(proxied_map.read("2"), -200);
+    EXPECT_EQ(proxied_map.read("3"), -3000);
+
+    proxied_map.remove("1");
+    EXPECT_THROW(proxied_map.read("1"), std::out_of_range);
+
+    proxied_map.add("1", 100);
+    EXPECT_EQ(proxied_map.read("1"), 100);
 }
 
-TEST(ProxiedMapRemoveTest, OwnMapThrows) {
-    std::map<std::string, int> data;
-    data.insert({"Key1", 7});
-    OwnMapAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.remove("Key1"), std::runtime_error);
+TEST(ProxiedMap, ReaderAuditor) {
+    std::map<std::string, int> map;
+    map.insert({ "1", 10 });
+    map.insert({ "2", 200 });
+    map.insert({ "3", 3000 });
+
+    ReaderAuditor reader;
+    ProxiedMap proxied_map(map, reader);
+
+    EXPECT_EQ(proxied_map.read("1"), 10);
+    EXPECT_EQ(proxied_map.read("2"), 200);
+    EXPECT_EQ(proxied_map.read("3"), 3000);
+    EXPECT_THROW(proxied_map.read("4"), std::out_of_range);
+
+    EXPECT_THROW(proxied_map.edit("1", -10), std::runtime_error);
+    EXPECT_THROW(proxied_map.add("1", -10), std::runtime_error);
+    EXPECT_THROW(proxied_map.remove("1"), std::runtime_error);
 }
 
-TEST(ProxiedMapRemoveTest, ReaderThrows) {
-    std::map<std::string, int> data;
-    data.insert({"Key1", 7});
-    ReaderAuditor auditor;
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.remove("Key1"), std::runtime_error);
+TEST(ProxiedMap, OwnMapAuditor) {
+    std::map<std::string, int> map;
+    map.insert({ "1", 10 });
+    map.insert({ "2", 200 });
+    map.insert({ "3", 3000 });
+
+    OwnMapAuditor own_map_auditor_readonly({{"1", -10}}, false);
+    OwnMapAuditor own_map_auditor_readwrite({{"2", -200}}, true);
+
+    ProxiedMap proxied_map_readonly(map, own_map_auditor_readonly);
+    ProxiedMap proxied_map_readwrite(map, own_map_auditor_readwrite);
+
+    EXPECT_EQ(proxied_map_readonly.read("1"), -10);
+    EXPECT_EQ(proxied_map_readonly.read("2"), 200);
+    EXPECT_EQ(proxied_map_readonly.read("3"), 3000);
+    EXPECT_THROW(proxied_map_readonly.read("4"), std::out_of_range);
+
+    EXPECT_THROW(proxied_map_readonly.edit("1", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map_readonly.edit("2", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map_readonly.add("1", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map_readonly.remove("1"), std::runtime_error);
+    EXPECT_THROW(proxied_map_readonly.remove("2"), std::runtime_error);
+
+    EXPECT_EQ(proxied_map_readwrite.read("1"), 10);
+    EXPECT_EQ(proxied_map_readwrite.read("2"), -200);
+    EXPECT_EQ(proxied_map_readwrite.read("3"), 3000);
+    EXPECT_THROW(proxied_map_readwrite.read("4"), std::out_of_range);
+
+    proxied_map_readwrite.edit("2", 150);
+    EXPECT_EQ(proxied_map_readwrite.read("2"), 150);
+
+    EXPECT_THROW(proxied_map_readwrite.edit("1", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map_readwrite.add("1", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map_readwrite.remove("1"), std::runtime_error);
+    EXPECT_THROW(proxied_map_readwrite.remove("2"), std::runtime_error);
 }
 
-TEST(ProxiedMapRemoveTest, SlaveThrows) {
-    std::map<std::string, int> data;
-    data.insert({"Key1", 7});
-    SlaveAuditor auditor({"Key1"});
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.remove("Key1"), std::runtime_error);
+TEST(ProxiedMap, ProxyAuditor) {
+    std::map<std::string, int> map;
+    map.insert({ "key_writable", 10 });
+    map.insert({ "key_prohibited", 200 });
+    map.insert({ "other", 3000 });
+
+    ProxyAuditor auditor({"key_writable"}, {"key_prohibited"});
+    ProxiedMap proxied_map(map, auditor);
+
+    EXPECT_EQ(proxied_map.read("key_writable"), 10);
+    EXPECT_EQ(proxied_map.read("other"), 3000);
+    EXPECT_THROW(proxied_map.read("key_prohibited"), std::runtime_error);
+
+    proxied_map.edit("key_writable", -10);
+    EXPECT_EQ(proxied_map.read("key_writable"), -10);
+
+    EXPECT_THROW(proxied_map.edit("other", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map.add("any_key", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map.remove("any_key"), std::runtime_error);
+    EXPECT_THROW(proxied_map.remove("any_key"), std::runtime_error);
 }
 
-TEST(ProxiedMapRemoveTest, ProxyThrows) {
-    std::map<std::string, int> data;
-    data.insert({"Key1", 7});
-    ProxyAuditor auditor({}, {"Key1"});
-    ProxiedMap m(data, auditor);
-    EXPECT_THROW(m.remove("Key1"), std::runtime_error);
+TEST(ProxiedMap, SlaveAuditor) {
+    std::map<std::string, int> map;
+    map.insert({ "key_asses", 10 });
+    map.insert({ "other", 3000 });
+
+    SlaveAuditor auditor({"key_asses"});
+    ProxiedMap proxied_map(map, auditor);
+
+    EXPECT_EQ(proxied_map.read("key_asses"), 10);
+    EXPECT_THROW(proxied_map.read("other"), std::runtime_error);
+
+    EXPECT_THROW(proxied_map.edit("key_asses", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map.edit("other", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map.add("any_key", 0), std::runtime_error);
+    EXPECT_THROW(proxied_map.remove("any_key"), std::runtime_error);
+    EXPECT_THROW(proxied_map.remove("any_key"), std::runtime_error);
 }
 
 int main(int argc, char **argv) {

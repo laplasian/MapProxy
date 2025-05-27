@@ -1,6 +1,5 @@
 #ifndef AUDITOR_H
 #define AUDITOR_H
-#include <assert.h>
 #include <map>
 #include <string>
 #include <utility>
@@ -12,15 +11,15 @@ public:
     virtual ~Auditor() = default;
 
     enum AccessType {
-        Prohibited = 1 << 0, Readonly = 1 << 1, Write = 1 << 2, Owner = 1 << 3, Addable = 1 << 4, Removable = 1 << 5,
-        ReadWrite = Readonly | Write,
-        FullAccess = Readonly | Write | Addable | Removable,
-        OwnerReadonly = Readonly | Owner,
-        OwnerReadWrite = Readonly | Write | Owner,
+        Prohibited = 1 << 0, Readable = 1 << 1, Writeable = 1 << 2, Owned = 1 << 3, Addable = 1 << 4, Removable = 1 << 5,
+        ReadWrite = Readable | Writeable,
+        FullAccess = Readable | Writeable | Addable | Removable,
+        OwnerReadonly = Readable | Owned,
+        OwnerReadWrite = Readable | Writeable | Owned,
     };
 
     [[nodiscard]] const virtual std::pair < AccessType, int > check_read(const std::string& key) const = 0;
-    [[nodiscard]] const virtual AccessType check_write(const std::string& key, int data) { return check_read(key).first;} ;
+    [[nodiscard]] const virtual AccessType check_write(const std::string& key, int data) { return check_read(key).first;};
 };
 
 class FullAccessAuditor final : public Auditor {
@@ -31,25 +30,25 @@ public:
 
 class ReaderAuditor final : public Auditor {
 public:
-    [[nodiscard]] const std::pair < AccessType, int > check_read(const std::string& key) const override {return {Readonly, 0};};
+    [[nodiscard]] const std::pair < AccessType, int > check_read(const std::string& key) const override {return {Readable, 0};};
 };
 
-class OwnMapAuditor final : public Auditor { // Имеет права чтения и записи для spoofed, для остальных ключей только чтение
+class OwnMapAuditor final : public Auditor { // Имеет права чтения и/или записи для spoofed, для остальных ключей только чтение
 public:
-    explicit OwnMapAuditor(const std::map<std::string, int> & spoofed = {}): spoofed(spoofed) {};
+    explicit OwnMapAuditor(const std::map<std::string, int> & spoofed = {}, const bool writeable_spoofed = true): spoofed(spoofed), writeable_spoofed(writeable_spoofed) {};
     [[nodiscard]] const std::pair < AccessType, int > check_read(const std::string& key) const override {
         const auto item = spoofed.find(key);
-        if (item == spoofed.end()) return  {Readonly, 0}; // Выдаёт только Readonly, так как данным ключом key не владеет
-        return  {OwnerReadWrite, item->second};
+        if (item == spoofed.end()) return  {Readable, 0}; // Выдаёт только Readable, так как данным ключом key не владеет
+        return  {writeable_spoofed ? OwnerReadWrite : OwnerReadonly, item->second};
     };
     [[nodiscard]] const AccessType check_write(const std::string& key, int data) override {
-        if (spoofed.find(key) == spoofed.end()) return Readonly; // Выдаёт только Readonly, так как данным ключом key не владеет
-        spoofed[key] = data;
-        assert(spoofed[key] == data);
-        return OwnerReadWrite;
+        if (spoofed.find(key) == spoofed.end()) return Readable; // Выдаёт только Readable, так как данным ключом key не владеет
+        if (writeable_spoofed) spoofed[key] = data;
+        return writeable_spoofed ? OwnerReadWrite : OwnerReadonly;
     };
 private:
     std::map<std::string, int> spoofed;
+    bool writeable_spoofed;
 };
 
 static bool find(const std::vector<std::string>& vec, const std::string& key) { return std::find(vec.begin(), vec.end(), key) != vec.end(); };
@@ -61,7 +60,7 @@ public:
     [[nodiscard]] const std::pair < AccessType, int > check_read(const std::string& key) const override {
         if (find(prohibited_map_, key)) return {Prohibited, 0};
         if (find(write_map_, key)) return {ReadWrite, 0};
-        return {Readonly, 0};
+        return {Readable, 0};
     }
 private:
     std::vector<std::string> write_map_;
@@ -72,7 +71,7 @@ class SlaveAuditor final : public Auditor {
 public:
     explicit SlaveAuditor(const std::vector<std::string>& read_access_map): access_map_(read_access_map){};
     [[nodiscard]] const std::pair < AccessType, int > check_read(const std::string& key) const override {
-        if (find(access_map_, key)) return {Readonly, 0};
+        if (find(access_map_, key)) return {Readable, 0};
         return {Prohibited, 0};
     }
 private:
