@@ -4,14 +4,14 @@
 #include <map>
 
 TEST(AuditorTest, BasicTest) {
-    OwnMap g1({{"key", 1}});
-    FullAccess g2;
-    Reader g3;
-    Slave g4({"key"});
-    Proxy g5({"write"}, {"prohibited"});
+    OwnMapAuditor g1({{"key", 1}});
+    FullAccessAuditor g2;
+    ReaderAuditor g3;
+    SlaveAuditor g4({"key"});
+    ProxyAuditor g5({"write"}, {"prohibited"});
 
     EXPECT_EQ(g1.check_read(""), ( std::pair{Auditor::Readonly, 0}) );
-    EXPECT_EQ(g1.check_read("key"), (std::pair{Auditor::Owner, 1}));
+    EXPECT_EQ(g1.check_read("key"), (std::pair{Auditor::OwnerReadWrite, 1}));
 
     EXPECT_EQ(g2.check_read(""), ( std::pair{Auditor::FullAccess, 0}) );
 
@@ -33,13 +33,13 @@ TEST(ProxiedMapTest, BankSystem)
     bank_account$.insert({ "Lev", -100 });
     bank_account$.insert({ "Artem", 1 });
 
-    OwnMap OldData({{ "Pavel", 5000 }, { "Lev", 0 }, { "Artem", -10 }});
-    FullAccess Government;
-    Reader TaxInspector;
+    OwnMapAuditor OldData({{ "Pavel", 5000 }, { "Lev", 0 }, { "Artem", -10 }});
+    FullAccessAuditor Government;
+    ReaderAuditor TaxInspector;
 
-    Slave Pavel({"Pavel"});
-    Slave Lev({"Lev"});
-    Slave Artem({"Artem"});
+    SlaveAuditor Pavel({"Pavel"});
+    SlaveAuditor Lev({"Lev"});
+    SlaveAuditor Artem({"Artem"});
 
     ProxiedMap Map1(bank_account$, Pavel);
     ProxiedMap Map2(bank_account$, Lev);
@@ -70,7 +70,7 @@ TEST(ProxiedMapTest, EditTest)
     std::map<std::string, int> bank_account$;
     bank_account$.insert({ "Employee", 10 });
 
-    FullAccess Boss;
+    FullAccessAuditor Boss;
     ProxiedMap Map(bank_account$, Boss);
 
     EXPECT_EQ(Map.read("Employee"), 10);
@@ -83,7 +83,7 @@ TEST(ProxiedMapTest, EditTest)
 
 TEST(ProxiedMapAddTest, FullAccessPermitsNewKey) {
     std::map<std::string, int> data;
-    FullAccess auditor;
+    FullAccessAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_NO_THROW(m.add("Key1", 42));
     EXPECT_EQ(m.read("Key1"), 42);
@@ -92,7 +92,7 @@ TEST(ProxiedMapAddTest, FullAccessPermitsNewKey) {
 TEST(ProxiedMapAddTest, FullAccessPermitsOverwrite) {
     std::map<std::string, int> data;
     data.insert({"Key1", 7});
-    FullAccess auditor;
+    FullAccessAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_NO_THROW(m.add("Key1", 100));
     EXPECT_EQ(m.read("Key1"), 100);
@@ -100,28 +100,28 @@ TEST(ProxiedMapAddTest, FullAccessPermitsOverwrite) {
 
 TEST(ProxiedMapAddTest, OwnMapThrows) {
     std::map<std::string, int> data;
-    OwnMap auditor;
+    OwnMapAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
 }
 
 TEST(ProxiedMapAddTest, ReaderThrows) {
     std::map<std::string, int> data;
-    Reader auditor;
+    ReaderAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
 }
 
 TEST(ProxiedMapAddTest, SlaveThrows) {
     std::map<std::string, int> data;
-    Slave auditor({"Key1"});
+    SlaveAuditor auditor({"Key1"});
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
 }
 
 TEST(ProxiedMapAddTest, ProxyThrows) {
     std::map<std::string, int> data;
-    Proxy auditor({"Key1"}, {});
+    ProxyAuditor auditor({"Key1"}, {});
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.add("Key1", 1), std::runtime_error);
 }
@@ -129,7 +129,7 @@ TEST(ProxiedMapAddTest, ProxyThrows) {
 TEST(ProxiedMapRemoveTest, FullAccessPermitsExistingKey) {
     std::map<std::string, int> data;
     data.insert({"Key1", 7});
-    FullAccess auditor;
+    FullAccessAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_NO_THROW(m.remove("Key1"));
     EXPECT_THROW(m.read("Key1"), std::out_of_range);
@@ -137,7 +137,7 @@ TEST(ProxiedMapRemoveTest, FullAccessPermitsExistingKey) {
 
 TEST(ProxiedMapRemoveTest, FullAccessPermitsNonExistingKey) {
     std::map<std::string, int> data;
-    FullAccess auditor;
+    FullAccessAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_NO_THROW(m.remove("Key2"));
     EXPECT_THROW(m.read("Key2"), std::out_of_range);
@@ -146,7 +146,7 @@ TEST(ProxiedMapRemoveTest, FullAccessPermitsNonExistingKey) {
 TEST(ProxiedMapRemoveTest, OwnMapThrows) {
     std::map<std::string, int> data;
     data.insert({"Key1", 7});
-    OwnMap auditor;
+    OwnMapAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.remove("Key1"), std::runtime_error);
 }
@@ -154,7 +154,7 @@ TEST(ProxiedMapRemoveTest, OwnMapThrows) {
 TEST(ProxiedMapRemoveTest, ReaderThrows) {
     std::map<std::string, int> data;
     data.insert({"Key1", 7});
-    Reader auditor;
+    ReaderAuditor auditor;
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.remove("Key1"), std::runtime_error);
 }
@@ -162,7 +162,7 @@ TEST(ProxiedMapRemoveTest, ReaderThrows) {
 TEST(ProxiedMapRemoveTest, SlaveThrows) {
     std::map<std::string, int> data;
     data.insert({"Key1", 7});
-    Slave auditor({"Key1"});
+    SlaveAuditor auditor({"Key1"});
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.remove("Key1"), std::runtime_error);
 }
@@ -170,7 +170,7 @@ TEST(ProxiedMapRemoveTest, SlaveThrows) {
 TEST(ProxiedMapRemoveTest, ProxyThrows) {
     std::map<std::string, int> data;
     data.insert({"Key1", 7});
-    Proxy auditor({}, {"Key1"});
+    ProxyAuditor auditor({}, {"Key1"});
     ProxiedMap m(data, auditor);
     EXPECT_THROW(m.remove("Key1"), std::runtime_error);
 }
