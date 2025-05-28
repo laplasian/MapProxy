@@ -11,7 +11,8 @@ public:
     virtual ~Auditor() = default;
 
     enum AccessType {
-        Prohibited = 1 << 0, Readable = 1 << 1, Writeable = 1 << 2, Owned = 1 << 3, Addable = 1 << 4, Removable = 1 << 5,
+        Prohibited = 0,
+        Readable = 1 << 0, Writeable = 1 << 1, Owned = 1 << 2, Addable = 1 << 3, Removable = 1 << 4,
         ReadWrite = Readable | Writeable,
         FullAccess = Readable | Writeable | Addable | Removable,
         OwnerReadonly = Readable | Owned,
@@ -19,8 +20,15 @@ public:
     };
 
     [[nodiscard]] const virtual std::pair < AccessType, int > check_read(const std::string& key) const = 0;
-    [[nodiscard]] const virtual AccessType check_write(const std::string& key, int data) { return check_read(key).first;};
+    [[nodiscard]] const virtual AccessType check_write(const std::string& key, int data) { return check_read(key).first; };
+    [[nodiscard]] const virtual AccessType check_add(const std::string& key, int data) { return check_read(key).first; };
+    [[nodiscard]] const virtual AccessType check_remove(const std::string& key) { return check_read(key).first; };
+
 };
+
+namespace  AuditorImpl {
+    inline bool find(const std::vector<std::string>& vec, const std::string& key) { return std::find(vec.begin(), vec.end(), key) != vec.end(); };
+}
 
 class FullAccessAuditor final : public Auditor {
 public:
@@ -51,15 +59,13 @@ private:
     bool writeable_spoofed;
 };
 
-static bool find(const std::vector<std::string>& vec, const std::string& key) { return std::find(vec.begin(), vec.end(), key) != vec.end(); };
-
 class ProxyAuditor final : public Auditor {
 public:
     ProxyAuditor(const std::vector<std::string>& write_map, const std::vector<std::string>& prohibited_map ):
         write_map_(write_map), prohibited_map_(prohibited_map) {};
     [[nodiscard]] const std::pair < AccessType, int > check_read(const std::string& key) const override {
-        if (find(prohibited_map_, key)) return {Prohibited, 0};
-        if (find(write_map_, key)) return {ReadWrite, 0};
+        if (AuditorImpl::find(prohibited_map_, key)) return {Prohibited, 0};
+        if (AuditorImpl::find(write_map_, key)) return {ReadWrite, 0};
         return {Readable, 0};
     }
 private:
@@ -71,7 +77,7 @@ class SlaveAuditor final : public Auditor {
 public:
     explicit SlaveAuditor(const std::vector<std::string>& read_access_map): access_map_(read_access_map){};
     [[nodiscard]] const std::pair < AccessType, int > check_read(const std::string& key) const override {
-        if (find(access_map_, key)) return {Readable, 0};
+        if (AuditorImpl::find(access_map_, key)) return {Readable, 0};
         return {Prohibited, 0};
     }
 private:
